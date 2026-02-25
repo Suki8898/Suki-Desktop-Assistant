@@ -1,6 +1,7 @@
 
 <div align="center">
-  <img width="442" height="367" alt="image" src="https://github.com/user-attachments/assets/2ba7129c-8d68-47e4-a4d7-9592f4dd25d7">
+  <img width="374" height="418" alt="image" src="https://github.com/user-attachments/assets/5101020f-9169-4ac1-ab43-aa53cdc7145c" >
+
   <h1>✨ Suki Desktop Assistant ✨</h1>
   <p><i>Trợ lý ảo màn hình máy tính của bạn!</i></p>
   <br>
@@ -29,9 +30,14 @@ Suki không chỉ là một cái hình hiện lên cho vui, ẻm còn biết nó
 ### ⏰ Báo Thức
 - Hẹn giờ nhắc uống nước 💧, nhắc đi ngủ 🛏️ hay nhắc chạy deadline 🏃‍♀️.
 
-### 🏃‍♀️ Nút Tắt
-- Suki rất muốn ở cạnh bạn, nhưng nếu bạn muốn tắt thì chỉ cần click chuột phải vào ẻm sẽ hiện ra nút để tắt. (Nút này hơi khó bấm nha)
-- Gợi ý: Đánh vào đầu để ẻm bị choáng.
+### 📝 Hướng dẫn sử dụng
+- Trước khi Suki có thể hoạt động được, bạn cần truy cập cài đặt bằng cách click chuột phải vào biểu tượng Suki từ system tray. 
+<img width="242" height="204" alt="image" src="https://github.com/user-attachments/assets/568d7750-bced-4edb-a62e-ed03bf8f7f0d" />
+
+- Vào tab AI, chọn nhà cung cấp AI và nhập API key của bạn và nhấn nút "Lưu".
+<img width="635" height="207" alt="image" src="https://github.com/user-attachments/assets/ae474194-f206-4338-ae08-9cd024e0e9c6" />
+
+- Suki rất muốn ở cạnh bạn, nhưng nếu bạn muốn tắt thì chỉ cần click chuột phải vào ẻm sẽ hiện ra nút để tắt. (Nút này hơi khó bấm nha). Gợi ý: Đánh vào đầu để ẻm bị choáng.
 
 ## 💌 Lời Nhắn Gửi Nhẹ Nhàng
 Code bằng đam mê, nếu thấy ẻm bị bug thì đừng giận nha, ẻm chỉ hơi bị "trầm cảm" xíu thôi. Hãy báo lỗi (or tự fix kkk). UwU

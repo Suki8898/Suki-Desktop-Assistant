@@ -24,7 +24,7 @@ class SettingsManager:
                 "max_messages": 20
             },
             "emotions": {
-                "list": ["normal", "happy", "angry", "sad", "thinking", "suspicion", "surprised", "embarrassed", "annoyed", "confused", "dizzy", "smug"]
+                "list": ["normal", "happy", "angry", "sad", "thinking", "suspicion", "surprised", "embarrassed", "annoyed", "confused", "dizzy", "smug", "hearthands", "sleepy", "hello"]
             },
             "ai": {
                 "provider": "Google",

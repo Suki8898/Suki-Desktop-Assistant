@@ -860,7 +860,9 @@ class SukiMainWindow(QMainWindow):
                                              
             emotion = "normal"
             text_to_show = response_text
-            match = re.search(r"<(normal|happy|angry|sad|thinking|suspicion|surprised|embarrassed|annoyed|confused|dizzy|smug)>", text_to_show, re.IGNORECASE)
+            emotions_list = self.settings_manager.get("emotions", "list", default=["normal", "happy", "angry", "sad", "thinking", "suspicion", "surprised", "embarrassed", "annoyed", "confused", "dizzy", "smug", "hearthands", "sleepy", "hello"])
+            emotions_pattern = "|".join([re.escape(e) for e in emotions_list])
+            match = re.search(rf"<({emotions_pattern})>", text_to_show, re.IGNORECASE)
             
             if match:
                 emotion = match.group(1).lower()

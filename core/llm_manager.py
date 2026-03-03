@@ -82,7 +82,7 @@ class LLMManager:
         if "{character_name}" in system_prompt:
             system_prompt = system_prompt.replace("{character_name}", char_name)
             
-        emotions_list = self.settings.get("emotions", "list", default=["normal", "happy", "angry", "sad", "thinking", "suspicion", "surprised", "embarrassed", "annoyed", "confused", "dizzy", "smug"])
+        emotions_list = self.settings.get("emotions", "list", default=["normal", "happy", "angry", "sad", "thinking", "suspicion", "surprised", "embarrassed", "annoyed", "confused", "dizzy", "smug", "hearthands", "sleepy", "hello"])
         emotions_str = ", ".join([f"<{e}>" for e in emotions_list])
         
         if not api_key:

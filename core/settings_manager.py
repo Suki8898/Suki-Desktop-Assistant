@@ -11,7 +11,8 @@ class SettingsManager:
     def get_default_settings(self):
         return {
             "general": {
-                "start_with_os": False
+                "start_with_os": False,
+                "static_knowledge": ""
             },
             "interaction": {
                 "browser_path": "",

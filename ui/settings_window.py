@@ -386,7 +386,7 @@ class SettingsWindow(QWidget):
         lbl_desc.setAlignment(Qt.AlignCenter)
         layout.addWidget(lbl_desc)
         
-        lbl_version = QLabel("Phiên bản: 1.0.1")
+        lbl_version = QLabel("Phiên bản: 1.0.2")
         lbl_version.setAlignment(Qt.AlignCenter)
         layout.addWidget(lbl_version)
         
@@ -535,6 +535,7 @@ class SettingsWindow(QWidget):
         if not self.settings_manager: return
         
         self.settings_manager.set("general", "start_with_os", self.chk_start_os.isChecked())
+        self.settings_manager.set("general", "static_knowledge", self.txt_static_knowledge.toPlainText())
         
         self.settings_manager.set("interaction", "use_default_browser", self.chk_default_browser.isChecked())
         self.settings_manager.set("interaction", "browser_path", self.txt_browser_path.text())

@@ -161,6 +161,11 @@ class SettingsWindow(QWidget):
         self.spn_max_history = QSpinBox()
         self.spn_max_history.setRange(5, 100)
         cnt_layout.addWidget(self.spn_max_history)
+        
+        self.btn_clear_history = QPushButton("Xóa lịch sử")
+        self.btn_clear_history.clicked.connect(self.clear_history)
+        cnt_layout.addWidget(self.btn_clear_history)
+        
         cnt_layout.addStretch()
         layout.addLayout(cnt_layout)
         
@@ -171,6 +176,12 @@ class SettingsWindow(QWidget):
         self.txt_history.setReadOnly(True)
         self.load_chat_history()
         layout.addWidget(self.txt_history)
+
+    def clear_history(self):
+        if self.llm_manager:
+            self.llm_manager.history = []
+            self.llm_manager.save_history()
+            self.load_chat_history()
         
     def load_chat_history(self):
         if hasattr(self, 'txt_history') and self.llm_manager:
@@ -187,9 +198,26 @@ class SettingsWindow(QWidget):
         layout = QFormLayout(self.tab_ai)
         
         self.cmb_provider = QComboBox()
-        self.cmb_provider.addItems(["Google", "OpenAI", "OpenRouter", "XAI"])
+        self.cmb_provider.addItems(["Google", "OpenAI", "OpenRouter", "XAI", "LM Studio"])
         self.cmb_provider.currentTextChanged.connect(self.on_provider_changed)
-        layout.addRow("Provider:", self.cmb_provider)
+        
+        provider_layout = QHBoxLayout()
+        provider_layout.addWidget(self.cmb_provider)
+        
+        self.lbl_port = QLabel("Port:")
+        self.spn_port = QSpinBox()
+        self.spn_port.setRange(1, 65535)
+        self.spn_port.setValue(1234)
+        self.spn_port.setFixedWidth(80)
+        
+        provider_layout.addWidget(self.lbl_port)
+        provider_layout.addWidget(self.spn_port)
+        
+        # Hide port by default
+        self.lbl_port.setVisible(False)
+        self.spn_port.setVisible(False)
+        
+        layout.addRow("Provider:", provider_layout)
         
         self.txt_api_key = QLineEdit()
         self.txt_api_key.setEchoMode(QLineEdit.Password)
@@ -222,6 +250,8 @@ class SettingsWindow(QWidget):
                 self.providers_data[old_provider]["api_key"] = self.txt_api_key.text()
                 self.providers_data[old_provider]["model"] = self.txt_model.text()
                 self.providers_data[old_provider]["temperature"] = self.spn_temp.value()
+                if old_provider == "LM Studio":
+                    self.providers_data[old_provider]["port"] = self.spn_port.value()
                 
                       
             if new_provider in self.providers_data:
@@ -229,15 +259,23 @@ class SettingsWindow(QWidget):
                 self.txt_api_key.setText(provider_cfg.get("api_key", ""))
                 self.txt_model.setText(provider_cfg.get("model", ""))
                 self.spn_temp.setValue(provider_cfg.get("temperature", 0.7))
+                if new_provider == "LM Studio":
+                    self.spn_port.setValue(provider_cfg.get("port", 1234))
                 
             self.current_provider = new_provider
+            
+            # Show/hide port spinbox
+            is_lm_studio = (new_provider == "LM Studio")
+            self.lbl_port.setVisible(is_lm_studio)
+            self.spn_port.setVisible(is_lm_studio)
         
     def open_model_docs(self):
         links = {
             "Google": "https://ai.google.dev/gemini-api/docs/models",
             "OpenAI": "https://developers.openai.com/api/docs/pricing",
             "OpenRouter": "https://openrouter.ai/models",
-            "XAI": "https://console.x.ai/"
+            "XAI": "https://console.x.ai/",
+            "LM Studio": "https://lmstudio.ai/docs"
         }
         url = links.get(self.cmb_provider.currentText(), "")
         if url:
@@ -502,6 +540,10 @@ class SettingsWindow(QWidget):
                 self.txt_api_key.setText(provider_cfg.get("api_key", ""))
                 self.txt_model.setText(provider_cfg.get("model", ""))
                 self.spn_temp.setValue(provider_cfg.get("temperature", 0.7))
+                if self.current_provider == "LM Studio":
+                    self.spn_port.setValue(provider_cfg.get("port", 1234))
+                    self.lbl_port.setVisible(True)
+                    self.spn_port.setVisible(True)
             else:
                 self.txt_api_key.setText(self.settings_manager.get("ai", "api_key", default=""))
                 self.txt_model.setText(self.settings_manager.get("ai", "model", default=""))
@@ -564,6 +606,8 @@ class SettingsWindow(QWidget):
                 self.providers_data[current_provider]["api_key"] = self.txt_api_key.text()
                 self.providers_data[current_provider]["model"] = self.txt_model.text()
                 self.providers_data[current_provider]["temperature"] = self.spn_temp.value()
+                if current_provider == "LM Studio":
+                    self.providers_data[current_provider]["port"] = self.spn_port.value()
             self.settings_manager.set("ai", "providers", self.providers_data)
         
                                                      

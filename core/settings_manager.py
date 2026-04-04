@@ -44,7 +44,7 @@ class SettingsManager:
                     "mặc áo 2 dây màu đen, vòng cổ đen; "
                     "da trắng hồng; dáng người nhỏ nhắn, gầy, chiều cao khoảng 1,4 mét.\n"
                     "Tính cách: Hướng nội.\n\n"
-                    "[QUAN TRỌNG]: BẠN PHẢI BẮT ĐẦU CÂU TRẢ LỜI CỦA MÌNH BẰNG ĐÚNG MỘT THẺ BIỂU CẢM. "
+                    "[QUAN TRỌNG]: BẠN PHẢI BẮT ĐẦU CÂU TRẢ LỜI CỦA MÌNH BẰNG ĐÚNG MỘT THẺ BIỂU CẢM, KHÔNG CẦN ĐÓNG THẺ </>. "
                     "Ví dụ: <happy>Xin chào chủ nhân!\n"
                     "[CÁC LỆNH HÀNH ĐỘNG]:\n"
                     "1. {BÁO THỨC} Nếu người dùng yêu cầu đặt báo thức, hãy tạo thẻ <Alarm|HH:MM|Nội_dung> vào cuối câu.\n"
@@ -59,7 +59,8 @@ class SettingsManager:
                     "Google": {"api_key": "", "model": "gemini-2.5-flash", "temperature": 0.7},
                     "OpenAI": {"api_key": "", "model": "gpt-4o-mini", "temperature": 0.7},
                     "OpenRouter": {"api_key": "", "model": "nvidia/nemotron-3-nano-30b-a3b:free", "temperature": 0.7},
-                    "XAI": {"api_key": "", "model": "grok-2-vision-1212", "temperature": 0.7}
+                    "XAI": {"api_key": "", "model": "grok-2-vision-1212", "temperature": 0.7},
+                    "LM Studio": {"api_key": "lm-studio", "model": "local-model", "temperature": 0.7, "port": 1234}
                 }
             },
             "ui": {

@@ -830,8 +830,8 @@ class SukiMainWindow(QMainWindow):
         self.chat_input.setPlaceholderText(f"{char_name} đang suy nghĩ...")
         self.chat_input.setEnabled(False)
         self.btn_attach.setEnabled(False)
-        self.set_emotion("thinking")                                                
-        
+        self.btn_mic.setEnabled(False)
+        self.set_emotion("thinking")
                                                        
         self.attached_images.clear()
         self.update_image_previews()
@@ -847,6 +847,8 @@ class SukiMainWindow(QMainWindow):
     @Slot(str, str)
     def on_llm_response_received(self, response_text, error_text):
         self.chat_input.setEnabled(True)
+        self.btn_attach.setEnabled(True)
+        self.btn_mic.setEnabled(True)
         char_name = self.settings_manager.get("character", "current_character", default="Suki")
         if error_text:
             self.chat_input.setPlaceholderText(f"Lỗi: {error_text[:30]}...")
@@ -857,53 +859,50 @@ class SukiMainWindow(QMainWindow):
             if hasattr(self, 'settings_window') and self.settings_window.isVisible():
                 self.settings_window.load_chat_history()
             
-                                             
+            # Refined Tag Processing
             emotion = "normal"
             text_to_show = response_text
-            emotions_list = self.settings_manager.get("emotions", "list", default=["normal", "happy", "angry", "sad", "thinking", "suspicion", "surprised", "embarrassed", "annoyed", "confused", "dizzy", "smug", "hearthands", "sleepy", "hello"])
-            emotions_pattern = "|".join([re.escape(e) for e in emotions_list])
-            match = re.search(rf"<({emotions_pattern})>", text_to_show, re.IGNORECASE)
             
-            if match:
-                emotion = match.group(1).lower()
-                                                        
-                text_to_show = text_to_show[:match.start()] + text_to_show[match.end():]
-                text_to_show = text_to_show.strip()
-                
-                                                     
-            alarm_match = re.search(r"<Alarm\|(\d{2}:\d{2})\|(.*?)>", text_to_show, re.IGNORECASE)
-            if alarm_match:
-                time_str = alarm_match.group(1)
-                msg_str = alarm_match.group(2).strip()
-                self.alarm_manager.add_alarm(time_str, msg_str)
+            emotions_list = self.settings_manager.get("emotions", "list", default=["normal", "happy", "angry", "sad", "thinking", "suspicion", "surprised", "embarrassed", "confused", "dizzy", "smug", "hearthands", "sleepy", "hello"])
+            
+            # 1. Tìm biểu cảm hợp lệ đầu tiên (nhưng chưa xóa vội để tránh lệch vị trí các thẻ chức năng)
+            all_simple_tags = re.findall(r"<([a-zA-Z0-9_]+)>", text_to_show)
+            for tag in all_simple_tags:
+                if tag.lower() in [e.lower() for e in emotions_list]:
+                    emotion = tag.lower()
+                    break
+                    
+            # 2. Xử lý các thẻ chức năng theo cách truyền thống (Xử lý đến đâu xóa đến đó)
+            
+            # Alarm match: <Alarm|HH:MM|Message>
+            while True:
+                alarm_match = re.search(r"<Alarm\|(\d{2}:\d{2})\|(.*?)>", text_to_show, re.IGNORECASE)
+                if not alarm_match: break
+                self.alarm_manager.add_alarm(alarm_match.group(1), alarm_match.group(2).strip())
                 if hasattr(self, 'settings_window') and self.settings_window.isVisible():
                     self.settings_window.load_alarms()
-                                                        
                 text_to_show = text_to_show[:alarm_match.start()] + text_to_show[alarm_match.end():]
-                text_to_show = text_to_show.strip()
-                
-                                                            
-            del_alarm_match = re.search(r"<DelAlarm\|(\d{2}:\d{2})\|(.*?)>", text_to_show, re.IGNORECASE)
-            if del_alarm_match:
-                time_str = del_alarm_match.group(1)
-                msg_str = del_alarm_match.group(2).strip()
-                self.alarm_manager.remove_alarm_by_match(time_str, msg_str)
+            
+            # Delete Alarm match: <DelAlarm|HH:MM|Message>
+            while True:
+                del_alarm_match = re.search(r"<DelAlarm\|(\d{2}:\d{2})\|(.*?)>", text_to_show, re.IGNORECASE)
+                if not del_alarm_match: break
+                self.alarm_manager.remove_alarm_by_match(del_alarm_match.group(1), del_alarm_match.group(2).strip())
                 if hasattr(self, 'settings_window') and self.settings_window.isVisible():
                     self.settings_window.load_alarms()
                 text_to_show = text_to_show[:del_alarm_match.start()] + text_to_show[del_alarm_match.end():]
-                text_to_show = text_to_show.strip()
-                
-                                      
-            web_match = re.search(r"<Web\|(.*?)>", text_to_show, re.IGNORECASE)
-            if web_match:
-                url_str = web_match.group(1).strip()
-                self.open_web(url_str)
+                    
+            # Web match: <Web|URL>
+            while True:
+                web_match = re.search(r"<Web\|(.*?)>", text_to_show, re.IGNORECASE)
+                if not web_match: break
+                self.open_web(web_match.group(1).strip())
                 text_to_show = text_to_show[:web_match.start()] + text_to_show[web_match.end():]
-                text_to_show = text_to_show.strip()
                 
-                                                   
-            music_match = re.search(r"<PlayMusic\|(.*?)>", text_to_show, re.IGNORECASE)
-            if music_match:
+            # PlayMusic match: <PlayMusic|Query>
+            while True:
+                music_match = re.search(r"<PlayMusic\|(.*?)>", text_to_show, re.IGNORECASE)
+                if not music_match: break
                 query = music_match.group(1).strip()
                 try:
                     import urllib.request
@@ -920,9 +919,11 @@ class SukiMainWindow(QMainWindow):
                     import urllib.parse
                     print(f"Lỗi tìm kiếm YouTube: {e}")
                     self.open_web(f"https://www.youtube.com/results?search_query={urllib.parse.quote(query)}")
-                
                 text_to_show = text_to_show[:music_match.start()] + text_to_show[music_match.end():]
-                text_to_show = text_to_show.strip()
+            
+            # 3. Cuối cùng, loại bỏ tất cả các thẻ cảm xúc (hợp lệ hoặc tự chế) còn sót lại
+            # Chỉ xóa các thẻ dạng <word> không có thanh đứng | bên trong
+            text_to_show = re.sub(r"<[a-zA-Z0-9_]+?>", "", text_to_show).strip()
             
             self.set_emotion(emotion)
             self.chat_bubble.show_message(text_to_show, self)

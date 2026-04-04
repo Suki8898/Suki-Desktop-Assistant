@@ -190,13 +190,16 @@ class LLMManager:
             except Exception as e:
                 return f"Lỗi Google API: {e}"
             
-        elif provider in ["OpenAI", "OpenRouter", "XAI"]:
+        elif provider in ["OpenAI", "OpenRouter", "XAI", "LM Studio"]:
                                                        
             kwargs = {"api_key": api_key}
             if provider == "OpenRouter":
                 kwargs["base_url"] = "https://openrouter.ai/api/v1"
             elif provider == "XAI":
                 kwargs["base_url"] = "https://api.x.ai/v1"
+            elif provider == "LM Studio":
+                port = provider_cfg.get("port", 1234) if providers_dict and provider in providers_dict else 1234
+                kwargs["base_url"] = f"http://localhost:{port}/v1"
             
             client = OpenAI(**kwargs)
             messages = [{"role": "system", "content": full_sys_prompt}]

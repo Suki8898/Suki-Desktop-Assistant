@@ -424,7 +424,7 @@ class SettingsWindow(QWidget):
         lbl_desc.setAlignment(Qt.AlignCenter)
         layout.addWidget(lbl_desc)
         
-        lbl_version = QLabel("Phiên bản: 1.0.2")
+        lbl_version = QLabel("Phiên bản: 1.1.0")
         lbl_version.setAlignment(Qt.AlignCenter)
         layout.addWidget(lbl_version)
         

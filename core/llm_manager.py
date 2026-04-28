@@ -1,10 +1,17 @@
 import json
 import os
+import re
 import threading
 import datetime
 import math
 import logging
 from openai import OpenAI
+
+# Initialize MemPalace global configuration
+# Disable ChromaDB telemetry to avoid missing modules (like posthog) in frozen builds
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+app_data_palace = os.path.join(os.environ.get("APPDATA", ""), "Suki8898", "MemPalace")
+os.environ["MEMPALACE_PALACE_PATH"] = app_data_palace
 
 class LLMManager:
     def __init__(self, settings_manager):
@@ -13,7 +20,6 @@ class LLMManager:
         self.max_history = 20 
         app_data_dir = os.path.join(os.environ.get("APPDATA", ""), "Suki8898", "Suki Desktop Assistant")
         self.history_file = os.path.join(app_data_dir, "chat_history.json")
-        self.static_knowledge_cache = {"text": "", "chunks": [], "provider": ""}                                         
         self.load_history()
 
     def load_history(self):
@@ -95,20 +101,27 @@ class LLMManager:
                                                                     
         full_sys_prompt += f"\n\nCác thẻ biểu cảm bạn có thể dùng: {emotions_str}"
 
-        static_knowledge = self.settings.get("general", "static_knowledge", default="")
+        static_knowledge = self.settings.get("general", "static_knowledge", default=[])
+        # Backward compat: if old string format, wrap in list
+        if isinstance(static_knowledge, str) and static_knowledge.strip():
+            static_knowledge = [p.strip() for p in static_knowledge.split("\n\n") if p.strip()]
         if static_knowledge:
-            relevant_chunks = self._get_relevant_knowledge(text, static_knowledge)
+            top_n = self.settings.get("general", "knowledge_topn", default=3)
+            full_text = "\n\n".join(static_knowledge)
+            relevant_chunks = self._get_relevant_knowledge(text, full_text, static_knowledge, top_n)
             if relevant_chunks:
                 sys_knowledge = "\n\n---\n".join(relevant_chunks)
                 full_sys_prompt += f"\n\n[KIẾN THỨC NỀN TẢNG TIÊU CHUẨN MÀ BẠN PHẢI BIẾT VÀ TÌM ĐƯỢC LIÊN QUAN ĐẾN CÂU HỎI]:\n{sys_knowledge}"
 
 
 
+        api_timeout = self.settings.get("ai", "api_timeout", default=30)
+        
         if provider == "Google":
             try:
                 from google import genai
                 from google.genai import types
-                client = genai.Client(api_key=api_key)
+                client = genai.Client(api_key=api_key, http_options={'timeout': float(api_timeout)})
                 
                                                            
                 gemini_history = []
@@ -190,18 +203,20 @@ class LLMManager:
             except Exception as e:
                 return f"Lỗi Google API: {e}"
             
-        elif provider in ["OpenAI", "OpenRouter", "XAI", "LM Studio"]:
+        elif provider in ["OpenAI", "OpenRouter", "XAI", "NVIDIA", "LM Studio"]:
                                                        
             kwargs = {"api_key": api_key}
             if provider == "OpenRouter":
                 kwargs["base_url"] = "https://openrouter.ai/api/v1"
             elif provider == "XAI":
                 kwargs["base_url"] = "https://api.x.ai/v1"
+            elif provider == "NVIDIA":
+                kwargs["base_url"] = "https://integrate.api.nvidia.com/v1"
             elif provider == "LM Studio":
                 port = provider_cfg.get("port", 1234) if providers_dict and provider in providers_dict else 1234
                 kwargs["base_url"] = f"http://localhost:{port}/v1"
             
-            client = OpenAI(**kwargs)
+            client = OpenAI(**kwargs, timeout=float(api_timeout))
             messages = [{"role": "system", "content": full_sys_prompt}]
             
                                         
@@ -276,126 +291,93 @@ class LLMManager:
             
         return "Nhà cung cấp chưa được hỗ trợ hoàn chỉnh."
 
-    def _cosine_similarity(self, vec1, vec2):
-        if not vec1 or not vec2 or len(vec1) != len(vec2):
-            return 0.0
-        dot_product = sum(a * b for a, b in zip(vec1, vec2))
-        norm1 = math.sqrt(sum(a * a for a in vec1))
-        norm2 = math.sqrt(sum(b * b for b in vec2))
-        if norm1 == 0 or norm2 == 0:
-            return 0.0
-        return dot_product / (norm1 * norm2)
-
-    def _get_embedding(self, text, provider, api_key):
-        if not text.strip():
-            return None
-        
-        try:
-            logging.info(f"\n[EMBEDDING] Sending text to Embedding API ({provider}):\n{text}")
-            if provider == "Google":
-                from google import genai
-                client = genai.Client(api_key=api_key)
-                response = client.models.embed_content(
-                    model='gemini-embedding-001',
-                    contents=text,
-                )
-                if response.embeddings and len(response.embeddings) > 0:
-                    return response.embeddings[0].values
-            elif provider == "OpenAI":
-                                                                                                                          
-                                                                                                                       
-                                                          
-                kwargs = {"api_key": api_key}
-                client = OpenAI(**kwargs)
-                
-                response = client.embeddings.create(
-                    input=text,
-                    model="text-embedding-3-small"                                  
-                )
-                return response.data[0].embedding
-        except Exception as e:
-            print(f"Embedding error: {e}")
-        return None
-
-    def _get_relevant_knowledge(self, query, full_text):
+    def _get_relevant_knowledge(self, query, full_text, items=None, top_n=3):
         if not full_text.strip():
             return []
-            
-        provider = self.settings.get("ai", "provider")
         
-        if provider in ["OpenRouter", "XAI"]:
-            return [full_text]
-        providers_dict = self.settings.get("ai", "providers")
-        api_key = ""
-        if providers_dict and provider in providers_dict:
-            api_key = providers_dict[provider].get("api_key", "")
-        else:
-            api_key = self.settings.get("ai", "api_key", "")
+        # Use items list if available, otherwise fall back to full_text
+        knowledge_items = items if items else [full_text]
             
-        if not api_key:
-            return [full_text]           
+        try:
+            from mempalace.searcher import search_memories
+            import os
+            palace_path = os.path.join(os.environ.get("APPDATA", ""), "Suki8898", "Suki Desktop Assistant", "MemPalace")
+            results = search_memories(query=query, palace_path=palace_path, wing="background", n_results=top_n)
             
-                                                     
-        if self.static_knowledge_cache.get("text") != full_text or self.static_knowledge_cache.get("provider") != provider:
-                           
-                                                                                       
-            import re
-            raw_chunks = [c.strip() for c in re.split(r'\n\s*\n', full_text) if c.strip()]
-            
-                                                                    
-            final_chunks = []
-            for rc in raw_chunks:
-                if len(rc) > 500:
-                    lines = rc.split('\n')
-                                                
-                    buf = ""
-                    for l in lines:
-                        if len(buf) + len(l) > 400 and buf:
-                            final_chunks.append(buf.strip())
-                            buf = l + "\n"
-                        else:
-                            buf += l + "\n"
-                    if buf:
-                        final_chunks.append(buf.strip())
-                else:
-                    final_chunks.append(rc)
-            
-            self.static_knowledge_cache["text"] = full_text
-            self.static_knowledge_cache["provider"] = provider
-            self.static_knowledge_cache["chunks"] = []
-            
-                              
-            for c in final_chunks:
-                emb = self._get_embedding(c, provider, api_key)
-                if emb:
-                    self.static_knowledge_cache["chunks"].append({
-                        "text": c,
-                        "vector": emb
-                    })
-                    
-        if not self.static_knowledge_cache["chunks"]:
-            return [full_text]                                                            
-            
-                     
-        query_emb = self._get_embedding(query, provider, api_key)
-        if not query_emb:
-            return [full_text]                                
-            
+            top_chunks = []
+            if results and results.get("results"):
+                for r in results["results"]:
+                    chunk_text = r.get("text", "").strip()
+                    if not chunk_text:
+                        continue
+                    # Deduplicate: skip if this chunk is largely contained in an existing one
+                    is_duplicate = False
+                    for existing in top_chunks:
+                        # If >80% of the shorter text appears in the longer one, it's a duplicate
+                        shorter, longer = (chunk_text, existing) if len(chunk_text) <= len(existing) else (existing, chunk_text)
+                        if shorter[:200] in longer:
+                            is_duplicate = True
+                            break
+                    if not is_duplicate:
+                        top_chunks.append(chunk_text)
                         
-        scored_chunks = []
-        for chunk_data in self.static_knowledge_cache["chunks"]:
-            score = self._cosine_similarity(query_emb, chunk_data["vector"])
-            scored_chunks.append((score, chunk_data["text"]))
-            
-        scored_chunks.sort(key=lambda x: x[0], reverse=True)
-        
-        logging.info(f"RAG Similarity Scores for '{query}':")
-        for s, c in scored_chunks[:3]:
-            logging.info(f" - [{s:.4f}] {c[:50]}...")
-        
-                                                    
-        top_chunks = [c for s, c in scored_chunks[:2] if s > 0.25]
-            
-        return top_chunks
+            logging.info(f"MemPalace Search for '{query}': Returned {len(top_chunks)} unique chunks.")
+            if not top_chunks:
+                # MemPalace has no data yet, use smart keyword fallback
+                return self._keyword_fallback(query, knowledge_items, top_n=top_n)
+            return top_chunks
+        except Exception as e:
+            logging.error(f"MemPalace Search error: {e}")
+            # Fallback to keyword-scored items if MemPalace fails
+            return self._keyword_fallback(query, knowledge_items, top_n=top_n)
 
-
+    def _keyword_fallback(self, query, items, top_n=3, max_chars=2000):
+        """Score knowledge items by keyword overlap with query, return top matches."""
+        if not items:
+            return []
+        
+        # Tokenize query into keywords (lowercase, remove punctuation)
+        query_words = set(re.findall(r'\w+', query.lower()))
+        # Remove very short/common words
+        stop_words = {'là', 'và', 'của', 'có', 'không', 'được', 'cho', 'này', 'với', 'các',
+                      'the', 'is', 'are', 'a', 'an', 'and', 'or', 'to', 'in', 'of', 'for',
+                      'em', 'anh', 'tôi', 'bạn', 'gì', 'như', 'thế', 'nào', 'đã', 'sẽ', 'đang'}
+        query_words = {w for w in query_words if len(w) > 1 and w not in stop_words}
+        
+        if not query_words:
+            # No meaningful keywords, return first items up to max_chars
+            result = []
+            total = 0
+            for item in items[:top_n]:
+                if total + len(item) > max_chars:
+                    break
+                result.append(item)
+                total += len(item)
+            return result
+        
+        # Score each item by keyword hit count
+        scored = []
+        for i, item in enumerate(items):
+            item_lower = item.lower()
+            score = sum(1 for w in query_words if w in item_lower)
+            scored.append((score, i, item))
+        
+        # Sort by score descending, then by original order for tie-breaking
+        scored.sort(key=lambda x: (-x[0], x[1]))
+        
+        # Take top_n, respecting max_chars budget
+        result = []
+        total = 0
+        for score, idx, item in scored[:top_n]:
+            if total + len(item) > max_chars:
+                remaining = max_chars - total
+                if remaining > 50:
+                    result.append(item[:remaining])
+                break
+            result.append(item)
+            total += len(item)
+        
+        matched_scores = [s[0] for s in scored[:top_n]]
+        logging.info(f"Keyword fallback for '{query}': {len(items)} items, "
+                     f"returning top {len(result)} (scores: {matched_scores}).")
+        return result

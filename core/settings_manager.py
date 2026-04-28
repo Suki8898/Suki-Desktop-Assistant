@@ -12,7 +12,8 @@ class SettingsManager:
         return {
             "general": {
                 "start_with_os": False,
-                "static_knowledge": ""
+                "static_knowledge": [],
+                "knowledge_topn": 3
             },
             "interaction": {
                 "browser_path": "",
@@ -32,6 +33,7 @@ class SettingsManager:
                 "api_key": "",
                 "model": "gemini-2.5-flash",
                 "temperature": 0.7,
+                "api_timeout": 30,
                 "system_prompt": (
                     "Bạn là {character_name}, một trợ lý ảo dễ thương trên máy tính.\n"
                     "Giới tính: Nữ\n"
@@ -60,6 +62,7 @@ class SettingsManager:
                     "OpenAI": {"api_key": "", "model": "gpt-4o-mini", "temperature": 0.7},
                     "OpenRouter": {"api_key": "", "model": "nvidia/nemotron-3-nano-30b-a3b:free", "temperature": 0.7},
                     "XAI": {"api_key": "", "model": "grok-2-vision-1212", "temperature": 0.7},
+                    "NVIDIA": {"api_key": "", "model": "nvidia/llama-3.1-405b-instruct", "temperature": 0.7},
                     "LM Studio": {"api_key": "lm-studio", "model": "local-model", "temperature": 0.7, "port": 1234}
                 }
             },

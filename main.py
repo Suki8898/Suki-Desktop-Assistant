@@ -1,5 +1,14 @@
 import sys
 import os
+from types import ModuleType
+
+# --- CRITICAL SAFEGUARD FOR FROZEN BUILDS ---
+# Disable ChromaDB telemetry globally to avoid missing module errors (like posthog) in frozen builds.
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+os.environ["CHROMA_TELEMETRY_DISABLE"] = "True"
+
+# --------------------------------------------
+
 from PySide6.QtWidgets import QApplication
 from ui.main_window import SukiMainWindow
 

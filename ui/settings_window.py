@@ -149,9 +149,141 @@ class SettingsWindow(QWidget):
     def setup_knowledge_tab(self):
         layout = QVBoxLayout(self.tab_knowledge)
         
-        self.txt_static_knowledge = QTextEdit()
-        self.txt_static_knowledge.setPlaceholderText("Nhập các kiến thức bạn muốn trợ lý luôn luôn ghi nhớ (ví dụ: công việc của bạn, sở thích, dự án hiện tại,...)")
-        layout.addWidget(self.txt_static_knowledge)
+        # Top N setting
+        topn_layout = QHBoxLayout()
+        topn_layout.addWidget(QLabel("Số ô kiến thức tối đa gửi cho AI:"))
+        self.spn_knowledge_topn = QSpinBox()
+        self.spn_knowledge_topn.setRange(1, 20)
+        self.spn_knowledge_topn.setValue(3)
+        self.spn_knowledge_topn.setFixedWidth(60)
+        topn_layout.addWidget(self.spn_knowledge_topn)
+        topn_layout.addStretch()
+        layout.addLayout(topn_layout)
+        
+        self.lst_knowledge = QListWidget()
+        self.lst_knowledge.setWordWrap(True)
+        self.lst_knowledge.setSpacing(2)
+        self.lst_knowledge.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.lst_knowledge.setDragDropMode(QListWidget.InternalMove)
+        self.lst_knowledge.setDefaultDropAction(Qt.MoveAction)
+        self.lst_knowledge.setStyleSheet("""
+            QListWidget::item {
+                background: #2a2a2a;
+                color: #eee;
+                border: 1px solid #444;
+                border-radius: 6px;
+                padding: 8px;
+                margin: 2px 0px;
+            }
+            QListWidget::item:selected {
+                background: #3a2a30;
+                color: #fff;
+                border: 1px solid #db9aaa;
+            }
+            QListWidget::item:hover {
+                background: #333;
+                color: #fff;
+            }
+        """)
+        self.lst_knowledge.itemDoubleClicked.connect(self.edit_knowledge_item)
+        layout.addWidget(self.lst_knowledge)
+        
+        btn_layout = QHBoxLayout()
+        
+        btn_add = QPushButton("＋ Thêm")
+        btn_add.setStyleSheet("background: #db9aaa; color: #1a1a1a; font-weight: bold; padding: 5px 12px; border-radius: 4px;")
+        btn_add.clicked.connect(self.add_knowledge_item)
+        btn_layout.addWidget(btn_add)
+        
+        btn_edit = QPushButton("✎ Sửa")
+        btn_edit.clicked.connect(lambda: self.edit_knowledge_item(self.lst_knowledge.currentItem()))
+        btn_layout.addWidget(btn_edit)
+        
+        btn_delete = QPushButton("✕ Xóa")
+        btn_delete.setStyleSheet("color: #ff6b6b;")
+        btn_delete.clicked.connect(self.delete_knowledge_item)
+        btn_layout.addWidget(btn_delete)
+        
+        btn_up = QPushButton("▲")
+        btn_up.setFixedWidth(30)
+        btn_up.clicked.connect(self.move_knowledge_up)
+        btn_layout.addWidget(btn_up)
+        
+        btn_down = QPushButton("▼")
+        btn_down.setFixedWidth(30)
+        btn_down.clicked.connect(self.move_knowledge_down)
+        btn_layout.addWidget(btn_down)
+        
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
+    
+    def move_knowledge_up(self):
+        row = self.lst_knowledge.currentRow()
+        if row > 0:
+            item = self.lst_knowledge.takeItem(row)
+            self.lst_knowledge.insertItem(row - 1, item)
+            self.lst_knowledge.setCurrentRow(row - 1)
+    
+    def move_knowledge_down(self):
+        row = self.lst_knowledge.currentRow()
+        if row < self.lst_knowledge.count() - 1:
+            item = self.lst_knowledge.takeItem(row)
+            self.lst_knowledge.insertItem(row + 1, item)
+            self.lst_knowledge.setCurrentRow(row + 1)
+    
+    def add_knowledge_item(self):
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Thêm kiến thức mới")
+        dialog.resize(450, 200)
+        dlg_layout = QVBoxLayout(dialog)
+        
+        txt = QTextEdit()
+        txt.setPlaceholderText("Nhập kiến thức (VD: Tên tôi là Suki, tôi thích mèo)")
+        dlg_layout.addWidget(txt)
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        dlg_layout.addWidget(buttons)
+        
+        if dialog.exec() == QDialog.Accepted:
+            content = txt.toPlainText().strip()
+            if content:
+                self.lst_knowledge.addItem(content)
+    
+    def edit_knowledge_item(self, item):
+        if not item:
+            return
+        from PySide6.QtWidgets import QDialog, QDialogButtonBox
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Sửa kiến thức")
+        dialog.resize(450, 200)
+        dlg_layout = QVBoxLayout(dialog)
+        
+        txt = QTextEdit()
+        txt.setPlainText(item.text())
+        dlg_layout.addWidget(txt)
+        
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        dlg_layout.addWidget(buttons)
+        
+        if dialog.exec() == QDialog.Accepted:
+            content = txt.toPlainText().strip()
+            if content:
+                item.setText(content)
+            else:
+                # Empty = delete
+                row = self.lst_knowledge.row(item)
+                self.lst_knowledge.takeItem(row)
+    
+    def delete_knowledge_item(self):
+        current = self.lst_knowledge.currentItem()
+        if current:
+            row = self.lst_knowledge.row(current)
+            self.lst_knowledge.takeItem(row)
         
     def setup_history_tab(self):
         layout = QVBoxLayout(self.tab_history)
@@ -198,7 +330,7 @@ class SettingsWindow(QWidget):
         layout = QFormLayout(self.tab_ai)
         
         self.cmb_provider = QComboBox()
-        self.cmb_provider.addItems(["Google", "OpenAI", "OpenRouter", "XAI", "LM Studio"])
+        self.cmb_provider.addItems(["Google", "OpenAI", "OpenRouter", "XAI", "NVIDIA", "LM Studio"])
         self.cmb_provider.currentTextChanged.connect(self.on_provider_changed)
         
         provider_layout = QHBoxLayout()
@@ -238,6 +370,11 @@ class SettingsWindow(QWidget):
         self.spn_temp.setSingleStep(0.1)
         layout.addRow("Temperature:", self.spn_temp)
         
+        self.spn_timeout = QSpinBox()
+        self.spn_timeout.setRange(5, 300)
+        self.spn_timeout.setSuffix(" giây")
+        layout.addRow("Timeout:", self.spn_timeout)
+        
         self.txt_prompt = QTextEdit()
         layout.addRow("System prompt:", self.txt_prompt)
         
@@ -275,6 +412,7 @@ class SettingsWindow(QWidget):
             "OpenAI": "https://developers.openai.com/api/docs/pricing",
             "OpenRouter": "https://openrouter.ai/models",
             "XAI": "https://console.x.ai/",
+            "NVIDIA": "https://build.nvidia.com/models",
             "LM Studio": "https://lmstudio.ai/docs"
         }
         url = links.get(self.cmb_provider.currentText(), "")
@@ -351,6 +489,15 @@ class SettingsWindow(QWidget):
         layout = QVBoxLayout(self.tab_alarm)
         
         self.lst_alarms = QListWidget()
+        self.lst_alarms.setStyleSheet("""
+            QListWidget::item {
+                border-bottom: 1px solid #444;
+                padding: 2px 0px;
+            }
+            QListWidget::item:selected {
+                background: #3a2a30;
+            }
+        """)
         layout.addWidget(self.lst_alarms)
         
         form_layout = QHBoxLayout()
@@ -387,15 +534,102 @@ class SettingsWindow(QWidget):
         layout.addLayout(sound_layout)
         
         self.load_alarms()
+
+    def _create_alarm_item_widget(self, index, alarm):
+        """Tạo widget cho mỗi dòng báo thức với nút ngày trong tuần."""
+        widget = QWidget()
+        h_layout = QHBoxLayout(widget)
+        h_layout.setContentsMargins(4, 2, 4, 2)
+        h_layout.setSpacing(4)
+        
+        # Text báo thức
+        time_str = alarm.get("time", "00:00")
+        msg = alarm.get("message", "")
+        lbl = QLabel(f"{time_str} – {msg}")
+        lbl.setStyleSheet("color: #eee; font-size: 12px;")
+        lbl.setMinimumWidth(140)
+        h_layout.addWidget(lbl)
+        
+        h_layout.addStretch()
+        
+        # Nút ngày trong tuần (T2=0, T3=1, ... CN=6)
+        day_names = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
+        alarm_days = alarm.get("days", [0, 1, 2, 3, 4, 5, 6])
+        
+        for day_idx, day_name in enumerate(day_names):
+            btn = QPushButton(day_name)
+            btn.setFixedSize(28, 22)
+            btn.setCursor(Qt.PointingHandCursor)
+            btn.setCheckable(True)
+            btn.setChecked(day_idx in alarm_days)
+            self._update_day_btn_style(btn)
+            
+            btn.clicked.connect(lambda checked, i=index, d=day_idx, b=btn: self._on_day_toggled(i, d, b))
+            h_layout.addWidget(btn)
+        
+        return widget
+
+    def _update_day_btn_style(self, btn):
+        """Cập nhật style cho nút ngày."""
+        if btn.isChecked():
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #db9aaa;
+                    color: white;
+                    border-radius: 4px;
+                    font-size: 10px;
+                    font-weight: bold;
+                    border: none;
+                    padding: 0px;
+                }
+                QPushButton:hover {
+                    background-color: #c98a9a;
+                }
+            """)
+        else:
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #555;
+                    color: #999;
+                    border-radius: 4px;
+                    font-size: 10px;
+                    border: none;
+                    padding: 0px;
+                }
+                QPushButton:hover {
+                    background-color: #666;
+                }
+            """)
+
+    def _on_day_toggled(self, alarm_index, day_index, btn):
+        """Xử lý khi bật/tắt ngày cho một báo thức."""
+        if not self.alarm_manager or alarm_index >= len(self.alarm_manager.alarms):
+            return
+        
+        alarm = self.alarm_manager.alarms[alarm_index]
+        days = alarm.get("days", [0, 1, 2, 3, 4, 5, 6])
+        
+        if btn.isChecked():
+            if day_index not in days:
+                days.append(day_index)
+                days.sort()
+        else:
+            if day_index in days:
+                days.remove(day_index)
+        
+        alarm["days"] = days
+        self.alarm_manager.save_alarms()
+        self._update_day_btn_style(btn)
         
     def load_alarms(self):
         if not self.alarm_manager: return
         self.lst_alarms.clear()
         for i, alarm in enumerate(self.alarm_manager.alarms):
-            time_str = alarm.get("time", "00:00")
-            msg = alarm.get("message", "")
-            item = QListWidgetItem(f"{time_str} - {msg}")
+            item = QListWidgetItem()
+            item_widget = self._create_alarm_item_widget(i, alarm)
+            item.setSizeHint(item_widget.sizeHint())
             self.lst_alarms.addItem(item)
+            self.lst_alarms.setItemWidget(item, item_widget)
             
     def add_alarm(self):
         if not self.alarm_manager: return
@@ -424,7 +658,7 @@ class SettingsWindow(QWidget):
         lbl_desc.setAlignment(Qt.AlignCenter)
         layout.addWidget(lbl_desc)
         
-        lbl_version = QLabel("Phiên bản: 1.1.0")
+        lbl_version = QLabel("Phiên bản: 1.2.0")
         lbl_version.setAlignment(Qt.AlignCenter)
         layout.addWidget(lbl_version)
         
@@ -524,8 +758,19 @@ class SettingsWindow(QWidget):
         self.lst_emotions.clear()
         self.lst_emotions.addItems(emotions_list)
         
-                        
-        self.txt_static_knowledge.setPlainText(self.settings_manager.get("general", "static_knowledge", default=""))
+                
+        # Load knowledge items (backward-compatible: migrate old string to list)
+        knowledge_data = self.settings_manager.get("general", "static_knowledge", default=[])
+        self.lst_knowledge.clear()
+        if isinstance(knowledge_data, str) and knowledge_data.strip():
+            # Migrate old format: split by double-newline into items
+            items = [p.strip() for p in knowledge_data.split("\n\n") if p.strip()]
+            self.lst_knowledge.addItems(items)
+        elif isinstance(knowledge_data, list):
+            for item in knowledge_data:
+                if isinstance(item, str) and item.strip():
+                    self.lst_knowledge.addItem(item)
+        self.spn_knowledge_topn.setValue(self.settings_manager.get("general", "knowledge_topn", default=3))
         
         self.cmb_provider.setCurrentText(self.settings_manager.get("ai", "provider"))
         self.current_provider = self.cmb_provider.currentText()
@@ -552,6 +797,8 @@ class SettingsWindow(QWidget):
             self.txt_api_key.setText(self.settings_manager.get("ai", "api_key", default=""))
             self.txt_model.setText(self.settings_manager.get("ai", "model", default=""))
             self.spn_temp.setValue(self.settings_manager.get("ai", "temperature", default=0.7))
+            
+        self.spn_timeout.setValue(self.settings_manager.get("ai", "api_timeout", default=30))
 
         self.txt_prompt.setPlainText(self.settings_manager.get("ai", "system_prompt"))
         
@@ -574,10 +821,18 @@ class SettingsWindow(QWidget):
             self.cmb_alarm_sound.setCurrentIndex(index_sound)
         
     def save_data(self):
+        import logging
         if not self.settings_manager: return
-        
+        logging.info("Bắt đầu lưu cài đặt...")
         self.settings_manager.set("general", "start_with_os", self.chk_start_os.isChecked())
-        self.settings_manager.set("general", "static_knowledge", self.txt_static_knowledge.toPlainText())
+        
+        # Collect knowledge items from list widget
+        knowledge_items = [self.lst_knowledge.item(i).text() for i in range(self.lst_knowledge.count())]
+        self.settings_manager.set("general", "static_knowledge", knowledge_items)
+        self.settings_manager.set("general", "knowledge_topn", self.spn_knowledge_topn.value())
+        
+        # Trigger MemPalace sync
+        self._sync_mempalace(knowledge_items)
         
         self.settings_manager.set("interaction", "use_default_browser", self.chk_default_browser.isChecked())
         self.settings_manager.set("interaction", "browser_path", self.txt_browser_path.text())
@@ -614,6 +869,7 @@ class SettingsWindow(QWidget):
         self.settings_manager.set("ai", "api_key", self.txt_api_key.text())
         self.settings_manager.set("ai", "model", self.txt_model.text())
         self.settings_manager.set("ai", "temperature", self.spn_temp.value())
+        self.settings_manager.set("ai", "api_timeout", self.spn_timeout.value())
 
         self.settings_manager.set("ai", "system_prompt", self.txt_prompt.toPlainText())
         
@@ -651,3 +907,70 @@ class SettingsWindow(QWidget):
         except Exception as e:
             print(f"Error modifying startup: {e}")
             return False
+
+    def _sync_mempalace(self, items):
+        import subprocess
+        import sys
+        import shutil
+        import glob
+        import logging
+        import threading
+        
+        if not items:
+            return
+            
+        app_data_dir = os.path.join(os.environ.get("APPDATA", ""), "Suki8898", "Suki Desktop Assistant")
+        sync_dir = os.path.join(app_data_dir, "KnowledgeSync")
+        palace_dir = os.path.join(app_data_dir, "MemPalace")
+        
+        try:
+            # Clean old chunk files and palace DB to force full re-index
+            if os.path.exists(sync_dir):
+                for old_file in glob.glob(os.path.join(sync_dir, "chunk_*.txt")):
+                    os.remove(old_file)
+            if os.path.exists(palace_dir):
+                shutil.rmtree(palace_dir, ignore_errors=True)
+                
+            os.makedirs(sync_dir, exist_ok=True)
+            
+            # Each knowledge item becomes a separate chunk file
+            for i, item in enumerate(items):
+                chunk_path = os.path.join(sync_dir, f"chunk_{i:03d}.txt")
+                with open(chunk_path, "w", encoding="utf-8") as f:
+                    f.write(item)
+            
+            # Write mempalace.yaml
+            yaml_file = os.path.join(sync_dir, "mempalace.yaml")
+            with open(yaml_file, "w", encoding="utf-8") as f:
+                f.write("agent: Suki\nrooms:\n  - name: knowledge\n    patterns:\n      - \"chunk_*.txt\"\n")
+                
+            env = os.environ.copy()
+            env["MEMPALACE_PALACE_PATH"] = palace_dir
+            env["PYTHONIOENCODING"] = "utf-8"
+            
+            python_exe = sys.executable
+            
+            # Run indexing in background thread programmatically
+            def _run_index():
+                try:
+                    # Disable ChromaDB telemetry to avoid missing modules (like posthog) in frozen builds
+                    os.environ["ANONYMIZED_TELEMETRY"] = "False"
+                    
+                    import mempalace.miner
+                    # Redirect stdout to capture mempalace output if needed, 
+                    # but for now we just call it.
+                    mempalace.miner.mine(
+                        project_dir=sync_dir,
+                        palace_path=palace_dir,
+                        wing_override="background",
+                        agent="Suki"
+                    )
+                    logging.info(f"MemPalace index hoàn tất: {len(items)} chunks đã được index.")
+                except Exception as e:
+                    logging.error(f"MemPalace index thread error: {e}")
+            
+            threading.Thread(target=_run_index, daemon=True).start()
+            logging.info(f"MemPalace indexing bắt đầu cho {len(items)} chunks...")
+            
+        except Exception as e:
+            print(f"Lỗi MemPalace Sync: {e}")

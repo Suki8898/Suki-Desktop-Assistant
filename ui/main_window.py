@@ -29,6 +29,7 @@ def external_resource_path(relative_path):
 
 class ChatInput(QTextEdit):
     image_pasted = Signal(QPixmap)
+    files_dropped = Signal(list)
     returnPressed = Signal()
 
     def __init__(self, parent=None):
@@ -87,6 +88,21 @@ class ChatInput(QTextEdit):
                     self.image_pasted.emit(pixmap)
                     return                     
         super().keyPressEvent(event)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dropEvent(self, event):
+        if event.mimeData().hasUrls():
+            file_paths = [url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()]
+            if file_paths:
+                self.files_dropped.emit(file_paths)
+                event.acceptProposedAction()
+        else:
+            super().dropEvent(event)
 
 from ui.settings_window import SettingsWindow
 from core.settings_manager import SettingsManager
@@ -261,7 +277,7 @@ class EvasiveButton(QWidget):
 
 from core.llm_manager import LLMManager
 from core.alarm_manager import AlarmManager
-from ui.alarm_popup import AlarmPopup
+# from ui.alarm_popup import AlarmPopup
 
 import speech_recognition as sr
 
@@ -403,6 +419,239 @@ class ChatBubble(QWidget):
         
         self.anim_group.start()
 
+
+class ThoughtBubble(QWidget):
+    """Bong bóng suy nghĩ hình đám mây hiển thị trước báo thức 10 phút hoặc khi báo thức kêu."""
+    choice_made = Signal(bool, str)  # (accepted, alarm_time_str) - cho pre-alarm
+    alarm_dismissed = Signal()       # Khi nhấn tắt báo thức chính
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setFixedSize(280, 180)
+        
+        self._alarm_time = ""
+        self._opacity_anim = QPropertyAnimation(self, b"windowOpacity")
+        
+        # Layout chính nằm bên trong vùng đám mây
+        # Vùng mây chính: dịch xuống 8px để tránh cắt gờ trên
+        self.content_widget = QWidget(self)
+        self.content_widget.setGeometry(10, 16, 250, 115)
+        content_layout = QVBoxLayout(self.content_widget)
+        content_layout.setContentsMargins(20, 18, 20, 12)
+        content_layout.setSpacing(10)
+        
+        self.msg_label = QLabel("Tắt báo thức sắp tới?")
+        self.msg_label.setWordWrap(True)
+        self.msg_label.setAlignment(Qt.AlignCenter)
+        self.msg_label.setStyleSheet("""
+            QLabel {
+                color: #4a4a4a;
+                font-size: 13px;
+                font-weight: bold;
+                background: transparent;
+            }
+        """)
+        content_layout.addWidget(self.msg_label)
+        
+        # Nút Có / Không
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(12)
+        
+        self.btn_yes = QPushButton("Có")
+        self.btn_yes.setCursor(Qt.PointingHandCursor)
+        self.btn_yes.setFixedSize(75, 28)
+        self.btn_yes.setStyleSheet("""
+            QPushButton {
+                background-color: #7ec8a0;
+                color: white;
+                border-radius: 14px;
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #5fb885;
+            }
+        """)
+        self.btn_yes.clicked.connect(self._on_yes)
+        
+        self.btn_no = QPushButton("Không")
+        self.btn_no.setCursor(Qt.PointingHandCursor)
+        self.btn_no.setFixedSize(75, 28)
+        self.btn_no.setStyleSheet("""
+            QPushButton {
+                background-color: #e88a9a;
+                color: white;
+                border-radius: 14px;
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #d06a7a;
+            }
+        """)
+        self.btn_no.clicked.connect(self._on_no)
+        
+        btn_layout.addStretch()
+        btn_layout.addWidget(self.btn_yes)
+        btn_layout.addWidget(self.btn_no)
+        btn_layout.addStretch()
+        content_layout.addLayout(btn_layout)
+        
+        # Timer tự ẩn sau 10 phút
+        self.auto_hide_timer = QTimer(self)
+        self.auto_hide_timer.setSingleShot(True)
+        self.auto_hide_timer.timeout.connect(self._on_no)
+
+    def paintEvent(self, event):
+        """Vẽ hình đám mây (thought bubble) với bong bóng nhỏ bên phải (hướng về nhân vật)."""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        
+        cloud_color = QColor(255, 255, 255, 245)
+        border_color = QColor(219, 154, 170, 180)  # #db9aaa mờ nhẹ
+        
+        # Tạo path cho thân mây (dịch xuống 8px - offset Y)
+        oy = 8  # offset Y để gờ trên không bị cắt
+        cloud_path = QPainterPath()
+        cloud_path.setFillRule(Qt.WindingFill)
+        cloud_path.addRoundedRect(15, 12+oy, 245, 108, 30, 30)
+        # Gờ mây phía trên
+        cloud_path.addEllipse(25, 2+oy, 70, 45)
+        cloud_path.addEllipse(75, -3+oy, 80, 42)
+        cloud_path.addEllipse(140, 0+oy, 75, 40)
+        cloud_path.addEllipse(195, 5+oy, 55, 35)
+        # Gờ mây hai bên
+        cloud_path.addEllipse(5, 30+oy, 40, 55)
+        cloud_path.addEllipse(230, 25+oy, 42, 55)
+        # Gờ dưới
+        cloud_path.addEllipse(30, 90+oy, 60, 38)
+        cloud_path.addEllipse(100, 95+oy, 70, 32)
+        cloud_path.addEllipse(180, 88+oy, 55, 36)
+        
+        # Vẽ fill (WindingFill đảm bảo không bị lủng)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(cloud_color)
+        painter.drawPath(cloud_path)
+        
+        # Vẽ viền ngoài - dùng simplified() chỉ cho outline
+        from PySide6.QtGui import QPen
+        pen = QPen(border_color, 1.5)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        outline = cloud_path.simplified()
+        painter.drawPath(outline)
+        
+        # Bong bóng nhỏ (dấu chấm suy nghĩ) bên PHẢI dưới
+        # Bong bóng 1 (to nhất, gần thân mây)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(cloud_color)
+        painter.drawEllipse(222, 133, 20, 16)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawEllipse(222, 133, 20, 16)
+        
+        # Bong bóng 2
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(cloud_color)
+        painter.drawEllipse(240, 150, 14, 11)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawEllipse(240, 150, 14, 11)
+        
+        # Bong bóng 3 (nhỏ nhất)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(cloud_color)
+        painter.drawEllipse(253, 161, 9, 7)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawEllipse(253, 161, 9, 7)
+        
+        painter.end()
+
+    def show_for_alarm(self, alarm_time, character_window):
+        """Hiển thị bong bóng suy nghĩ bên TRÁI nhân vật cho pre-alarm."""
+        self._alarm_time = alarm_time
+        self.msg_label.setText(f"Tắt báo thức {alarm_time}\nsắp tới?")
+        self.btn_yes.setText("Có")
+        self.btn_no.setVisible(True)
+        self._show_bubble(character_window)
+        # Tự ẩn sau 10 phút
+        self.auto_hide_timer.start(10 * 60 * 1000)
+
+    def show_for_active_alarm(self, message, character_window):
+        """Hiển thị bong bóng cho báo thức đang kêu."""
+        self.auto_hide_timer.stop()
+        self._alarm_time = ""
+        self.msg_label.setText(message)
+        self.btn_yes.setText("Tắt")
+        self.btn_no.setVisible(False)
+        self._show_bubble(character_window)
+        # Báo thức chính không tự ẩn, user phải nhấn tắt (hoặc auto stop sau 5p ở MainWindow)
+
+    def _show_bubble(self, character_window):
+        # Đặt vị trí bên TRÁI nhân vật
+        x = character_window.x() - self.width() + 60
+        y = character_window.y() - 20
+        self.move(x, y)
+        
+        # Stop existing animations
+        if self._opacity_anim.state() == QPropertyAnimation.Running:
+            self._opacity_anim.stop()
+            
+        self.setWindowOpacity(0.0)
+        self.show()
+        self.raise_()
+        
+        # Animation hiện lên
+        self._opacity_anim.setDuration(500)
+        self._opacity_anim.setStartValue(0.0)
+        self._opacity_anim.setEndValue(1.0)
+        self._opacity_anim.setEasingCurve(QEasingCurve.OutQuad)
+        try:
+            self._opacity_anim.finished.disconnect()
+        except:
+            pass
+        self._opacity_anim.start()
+
+    def _on_yes(self):
+        self.auto_hide_timer.stop()
+        if self.btn_no.isVisible():
+            self.choice_made.emit(True, self._alarm_time)
+        else:
+            self.alarm_dismissed.emit()
+        self.hide_with_animation()
+
+    def _on_no(self):
+        self.auto_hide_timer.stop()
+        self.choice_made.emit(False, self._alarm_time)
+        self.hide_with_animation()
+
+    def hide_with_animation(self):
+        if self._opacity_anim.state() == QPropertyAnimation.Running:
+            self._opacity_anim.stop()
+            
+        self._opacity_anim.setDuration(400)
+        self._opacity_anim.setStartValue(self.windowOpacity())
+        self._opacity_anim.setEndValue(0.0)
+        self._opacity_anim.setEasingCurve(QEasingCurve.InQuad)
+        try:
+            self._opacity_anim.finished.disconnect()
+        except:
+            pass
+        self._opacity_anim.finished.connect(self.hide)
+        self._opacity_anim.start()
+
+    def snap_to_character(self, character_window):
+        """Cập nhật vị trí khi nhân vật di chuyển."""
+        if self.isVisible():
+            x = character_window.x() - self.width() + 60
+            y = character_window.y() - 20
+            self.move(x, y)
+
 class SukiMainWindow(QMainWindow):
                                                                        
     llm_response_signal = Signal(str, str)
@@ -413,6 +662,7 @@ class SukiMainWindow(QMainWindow):
         self.llm_manager = LLMManager(self.settings_manager)
         self.alarm_manager = AlarmManager()
         self.alarm_manager.alarm_triggered.connect(self.show_alarm)
+        self.alarm_manager.pre_alarm_triggered.connect(self.show_pre_alarm)
         
         self.char_name = self.settings_manager.get("character", "current_character", default="Suki")
         self.current_emotion = "normal"
@@ -423,6 +673,11 @@ class SukiMainWindow(QMainWindow):
         self.chat_bubble = ChatBubble(self)
         self.chat_bubble.bubble_hidden.connect(self.on_bubble_hidden)
         
+        # Bong bóng suy nghĩ pre-alarm / báo thức chính
+        self.thought_bubble = ThoughtBubble(self)
+        self.thought_bubble.choice_made.connect(self.on_pre_alarm_choice)
+        self.thought_bubble.alarm_dismissed.connect(self.stop_alarm)
+        
                             
         self.llm_response_signal.connect(self.on_llm_response_received)
 
@@ -430,14 +685,43 @@ class SukiMainWindow(QMainWindow):
     def on_bubble_hidden(self):
         self.set_emotion("normal")
 
+    @Slot(str, str)
+    def show_pre_alarm(self, alarm_time, message):
+        """Hiển thị bong bóng suy nghĩ trước báo thức 10 phút."""
+        self.ensure_visible()
+        self.change_emotion("thinking")
+        self.thought_bubble.show_for_alarm(alarm_time, self)
+
+    def ensure_visible(self):
+        """Đảm bảo Suki hiện lên trên cùng nếu đang ẩn."""
+        if not self.isVisible():
+            self.toggle_visibility()
+        self.showNormal()
+        self.activateWindow()
+        self.raise_()
+
+    @Slot(bool, str)
+    def on_pre_alarm_choice(self, accepted, alarm_time):
+        """Xử lý khi người dùng chọn Có/Không trên bong bóng suy nghĩ."""
+        if accepted:
+            # Bỏ qua báo thức lần này
+            self.alarm_manager.skip_alarm_once(alarm_time)
+            self.chat_bubble.show_message(f"Đã bỏ qua báo thức {alarm_time} lần này~", self)
+            self.change_emotion("happy")
+        else:
+            self.change_emotion("normal")
+
     @Slot(str)
     def show_alarm(self, message):
+        """Xử lý khi báo thức chính kêu."""
+        self.ensure_visible()
+        
         self.change_emotion("happy")                            
         import winsound
         import os
         
         sound_file = self.settings_manager.get("alarm", "sound", default="Mặc định (Tiếng bíp)")
-        played = False
+        self._alarm_playing_mode = "none"
         
         if sound_file and sound_file != "Mặc định (Tiếng bíp)":
             sound_path = external_resource_path(os.path.join("assets", "sounds", sound_file))
@@ -449,21 +733,40 @@ class SukiMainWindow(QMainWindow):
                 self.alarm_player.setLoops(QMediaPlayer.Infinite)
                 self.alarm_audio.setVolume(1.0)
                 self.alarm_player.play()
-                played = True
+                self._alarm_playing_mode = "media"
                 
-        if not played:
+        if self._alarm_playing_mode == "none":
             flags = winsound.SND_ASYNC | winsound.SND_LOOP
             winsound.PlaySound("SystemAsterisk", winsound.SND_ALIAS | flags)
+            self._alarm_playing_mode = "winsound"
             
-        popup = AlarmPopup(message, None)
-        popup.exec()
+        # 2. Hiển thị thông báo trong bong bóng thay vì popup
+        self.thought_bubble.show_for_active_alarm(message, self)
         
-                                      
-        if played and hasattr(self, 'alarm_player'):
-            self.alarm_player.stop()
-        else:
-            winsound.PlaySound(None, winsound.SND_PURGE)
+        # 3. Hẹn giờ tự tắt âm sau 1 phút (60,000 ms)
+        if not hasattr(self, 'alarm_auto_stop_timer'):
+            self.alarm_auto_stop_timer = QTimer(self)
+            self.alarm_auto_stop_timer.setSingleShot(True)
+            self.alarm_auto_stop_timer.timeout.connect(self.stop_alarm)
+        self.alarm_auto_stop_timer.start(60000)
+
+    @Slot()
+    def stop_alarm(self):
+        """Dừng âm báo thức và reset trạng thái."""
+        if hasattr(self, 'alarm_auto_stop_timer'):
+            self.alarm_auto_stop_timer.stop()
+            
+        import winsound
+        if hasattr(self, '_alarm_playing_mode'):
+            if self._alarm_playing_mode == "media" and hasattr(self, 'alarm_player'):
+                self.alarm_player.stop()
+            elif self._alarm_playing_mode == "winsound":
+                winsound.PlaySound(None, winsound.SND_PURGE)
+        
+        self._alarm_playing_mode = "none"
         self.set_emotion("normal")
+        if self.thought_bubble.isVisible() and self.thought_bubble.btn_yes.text() == "Tắt":
+            self.thought_bubble.hide_with_animation()
 
     def open_settings(self):
         if not hasattr(self, 'settings_window') or not self.settings_window.isVisible():
@@ -574,6 +877,7 @@ class SukiMainWindow(QMainWindow):
         self.chat_input = ChatInput()
         self.chat_input.setPlaceholderText(f"Chat với {self.char_name}...")
         self.chat_input.image_pasted.connect(self.on_image_pasted)
+        self.chat_input.files_dropped.connect(self.on_files_dropped)
         
         self.attached_images = []
         
@@ -731,6 +1035,29 @@ class SukiMainWindow(QMainWindow):
                                                                              
         QApplication.processEvents()
         self.adjustSize()
+
+    @Slot(list)
+    def on_files_dropped(self, file_paths):
+        if len(self.attached_images) >= 3:
+            char_name = self.settings_manager.get("character", "current_character", default="Suki")
+            self.chat_bubble.show_message(f"{char_name} chỉ nhận tối đa 3 file một lúc thôi ạ!", self)
+            return
+            
+        slots_left = 3 - len(self.attached_images)
+        # Lọc các file có định dạng hỗ trợ
+        supported_exts = ['.png', '.jpg', '.jpeg', '.webp', '.txt', '.csv', '.md', '.json']
+        valid_files = [f for f in file_paths if os.path.splitext(f)[1].lower() in supported_exts]
+        
+        if not valid_files:
+            self.chat_bubble.show_message("Định dạng file không được hỗ trợ rồi ạ!", self)
+            return
+            
+        if len(valid_files) > slots_left:
+            self.chat_bubble.show_message(f"Suki chỉ lấy thêm {slots_left} file thôi nha!", self)
+            valid_files = valid_files[:slots_left]
+            
+        self.attached_images.extend(valid_files)
+        self.update_image_previews()
 
     def attach_image(self):
         if len(self.attached_images) >= 3:
@@ -1196,6 +1523,8 @@ class SukiMainWindow(QMainWindow):
         super().moveEvent(event)
         if hasattr(self, 'chat_bubble') and self.chat_bubble.isVisible():
             self.chat_bubble.snap_to_character(self)
+        if hasattr(self, 'thought_bubble') and self.thought_bubble.isVisible():
+            self.thought_bubble.snap_to_character(self)
 
     def mouseMoveEvent(self, event):
         if event.buttons() == Qt.LeftButton:
